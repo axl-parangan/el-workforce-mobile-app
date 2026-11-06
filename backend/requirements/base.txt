@@ -1,0 +1,10 @@
+# Runtime dependencies shared by every environment.
+# Django 5.2 is the current LTS (supported until April 2028) and is the newest
+# release officially supported by every package below.
+Django==5.2.19
+djangorestframework==3.18.3
+djangorestframework-simplejwt==5.5.1
+django-cors-headers==4.9.0
+django-environ==0.14.0
+psycopg[binary]==3.3.8
+whitenoise==6.12.0

@@ -1,0 +1,39 @@
+# Install once with `pipx install pre-commit && pre-commit install`.
+# Mobile hooks run on the host and require `npm ci` in mobile/ first.
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-json
+        exclude: ^mobile/tsconfig\.json$
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: ["--maxkb=1024"]
+      - id: detect-private-key
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.17.4
+    hooks:
+      - id: ruff-check
+        args: [--fix]
+        files: ^backend/
+      - id: ruff-format
+        files: ^backend/
+
+  - repo: local
+    hooks:
+      - id: mobile-prettier
+        name: prettier (mobile)
+        entry: bash -c 'cd mobile && npx prettier --check .'
+        language: system
+        files: ^mobile/
+        pass_filenames: false
+      - id: mobile-eslint
+        name: eslint (mobile)
+        entry: bash -c 'cd mobile && npx eslint . --max-warnings=0'
+        language: system
+        files: ^mobile/.*\.(ts|tsx|js)$
+        pass_filenames: false
