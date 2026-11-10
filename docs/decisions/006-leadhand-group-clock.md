@@ -1,7 +1,7 @@
 # ADR 006: LeadHand group clock-in and clock-out
 
-- Status: Accepted; schema implemented
-- Date: 2026-11-06 (revised for the ERD's attendance batch model)
+- Status: Accepted; implemented. Authorisation revised by ADR 011.
+- Date: 2026-11-06 (revised 2026-11-10 for the Manager role)
 
 ## Context
 
@@ -27,9 +27,16 @@ attendance must remain individually identifiable.
 
    Items are accepted or rejected individually, with a message. This gives
    **partial success**.
-4. **Authorisation.** The performer must be the job's LeadHand
-   (`Job.lead_hand`), an Admin, or, for a single-item batch, the employee
-   punching themselves. This is enforced in timekeeping services.
+4. **Authorisation** (ADR 011). Group punches may be recorded by:
+   - a **LeadHand**, for the crew of a job they **manage**: they are the
+     job's `lead_hand` **and** hold an active assignment on it
+   - an **Admin or Manager**, for any employee on any job. When they punch
+     anyone other than themselves, the batch is an administrative entry
+     (`source = admin_entry`): its location is stored but doesn't flag
+     sessions, it may carry an optional reason, and it must be current.
+
+   Employees can't record attendance for others. Authorisation uses the
+   shared capability map and scope selectors.
 5. **Offline.** The device queues the batch as one outbox event under its
    `idempotency_key` (ADR 002). Replaying the batch returns the original
    per-employee results. Employees who were rejected can be retried in a new
@@ -40,5 +47,5 @@ attendance must remain individually identifiable.
 - Individual correction is possible without affecting the rest of the group.
 - The LeadHand's own punch is a normal single-item batch for their own
   Employee record. It needs an assignment on the job.
-- Open: can a LeadHand clock out an employee who clocked themselves in? The
-  current assumption is yes, on jobs they lead.
+- Confirmed: a LeadHand can clock out an employee on a job they manage, even
+  if the employee clocked in themselves or was clocked in by someone else.

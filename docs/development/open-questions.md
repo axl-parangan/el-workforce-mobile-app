@@ -23,41 +23,63 @@ The remaining questions are triaged by their impact on it.
 | Topic | How it would be added | Assumption until then |
 | --- | --- | --- |
 | Punch corrections | A correcting batch or punch that references the original, plus a reason | No corrections. Payroll uses `adjustment_amount`. |
-| Breaks and lunches | New `PunchType` values and session or payroll fields | Not tracked |
+| **Lunch paid or unpaid (confirmed requirement)** | At clock-out the user says whether lunch was paid or unpaid. This needs a field, most likely on the clock-out batch or the session, plus payroll rules. | Not built; needs its own migration |
 | Overtime and holiday pay | Payroll line fields or a line type | Not calculated |
 | Mock-location and clock-skew flags | New `LocationStatus` values; skew is already computable from `captured_at` and `received_at` | Not flagged |
-| Offline notes | A `client_uuid` on `JobNote` | Notes are online-only |
+| **Offline notes (confirmed requirement)** | A `client_uuid` on `JobNote` (ADR 009 update) | Notes milestone |
+| **Note categories (confirmed requirement)** | A `category` column on `JobNote` showing urgency | Notes milestone |
 | Company-wide default geofence radius, or runtime timezone | Columns on `CompanySettings` | 100 m per job; timezone from deployment settings |
-| Finer note permissions | Boolean columns on `CompanySettings` | Workers allowed to create notes can edit and delete their own |
-| Multiple roles per user | Replace `User.role` with a many-to-many relation | One role. LeadHand includes worker capabilities. |
+| Manager note permissions | Deferred (D21) | Everyone can create notes; authors cannot edit or delete them (ADR 009 update) |
+| Runtime-editable permissions | Back `ROLE_CAPABILITIES` with Django Groups and Permissions | Fixed in code (D7) |
 | Currency | A `CompanySettings` column | Single currency, CAD |
 
 ## Category 3: implementation rules, no schema change
 
 | Topic | Current assumption |
 | --- | --- |
-| Do Admins use the mobile app? | No. They get a placeholder screen. |
-| Account provisioning (invite, password reset) | The Admin creates the user; password reset is to follow |
+| Do Admins and Managers use the mobile app? | **Resolved:** yes (D5). Placeholder sections exist. |
+| Account provisioning | **Implemented (service only):** guarded `create_account` with an unusable password. Sending the password-set link waits for email delivery. |
 | Clocked in to two jobs at once | **Implemented:** not allowed (`already_clocked_in`) |
-| LeadHand clocking out employees who clocked themselves in | **Implemented:** allowed on jobs they lead |
+| LeadHand clocking out employees who clocked themselves in, or were clocked in by others | **Implemented:** allowed on jobs they manage |
 | LeadHand's own punches | **Implemented:** need an active assignment; none is created automatically |
-| Who reviews flagged sessions, and does pending review block payroll? | **Implemented:** only Admins decide; LeadHands view their jobs. Payroll is to exclude pending sessions (not built yet). |
+| Who reviews sessions, and does pending review block payroll? | **Implemented:** Managers and Admins decide, never on their own timesheet. LeadHands view the jobs they manage. Payroll is to exclude pending sessions (not built yet). |
 | Events queued under user A, synced after user B signs in on the same device | Not allowed. They wait for user A. |
 | Shift crossing midnight | **Implemented:** counts toward the clock-in's work date |
 | Rounding of worked hours | None. `hours_paid` is the exact duration, to 4 dp. |
 | Pay period lock rules | Sessions in an approved run are not changed; corrections are adjustments |
 | A job without a geofence | Punches are not sent to review for that reason alone |
-| Notes after `workers_can_create_notes` is turned off | Workers keep editing and deleting their own existing notes |
+| Automatic logout after 10 minutes of inactivity, only when not clocked in | **Confirmed requirement, deferred:** mobile only, no schema change |
 
 ## Raised by timekeeping Phase 1
 
 | # | Question | Current behaviour |
 | --- | --- | --- |
 | T1 | **Stuck open sessions.** A session can stay open: the employee forgot to clock out, a clock-out was lost, or one was rejected (`clock_out_rejected`). That blocks the employee's next clock-in. Should Admins be able to enter or correct a clock-out, and should sessions auto-close after N hours? | Open until a valid clock-out arrives. Needs the correction design (Category 2). |
-| T2 | **Can LeadHands make review decisions** for the jobs they lead? | Admins only |
+| T2 | ~~Can LeadHands make review decisions?~~ | **Resolved:** no. Managers and Admins review. |
 | T3 | **Clock-ins on non-active jobs.** Should `planned` or `on_hold` jobs accept clock-ins? | Only `active` jobs accept clock-ins; clock-outs work for any status |
 | T4 | **Very old offline events.** Should events captured, say, more than 7 days before sync be flagged? | Not flagged |
-| T5 | **Admin manual entry** (`source = admin_entry`) | Not implemented |
+| T5 | ~~Admin manual entry~~ | **Implemented:** Admin and Manager entries for others are `admin_entry` and must be current (ADR 011) |
+
+## Deferred by the role restructuring (2026-11-10)
+
+All confirmed as future work; nothing implemented yet.
+
+| Item | Notes |
+| --- | --- |
+| Attendance correction requests and correction audit | Employees request corrections from Managers and Admins (D20). LeadHands edit their crew's timesheets through the same workflow. **Recommended design:** append-only correction records that reference the original punch, store the requested and approved values, the requester, the approver and the reason, and recompute the session. Original batches and punches are never edited. Approval follows the same rule as reviews: never your own. |
+| Backdated attendance | Only through the correction workflow. Administrative entries must currently be within 15 minutes of capture. |
+| Job number generation | Format and timing undecided (D12) |
+| Job-to-client relationship | Not added (D13) |
+| Detailed GPS authorization | Locations are captured only at punch time; no background tracking (D14) |
+| Payroll visibility, employee self-payroll setting, pay-rate restrictions | Deferred (D15). Pay is hourly only. |
+| Report permissions | Deferred (D16) |
+| Travel hours | A future client-specific billing and payroll feature (D17) |
+| Invoicing | Deferred (D18) |
+| Settings, permission-management and audit-log restrictions for Managers; a comprehensive audit log | Deferred (D19) |
+| Runtime-editable permissions | Deferred (D7) |
+| Manager team-note permissions | Deferred (D21) |
+| Automatic mobile logout after 10 minutes of inactivity when not clocked in | Deferred |
+| Role-change workflow | None. Roles are fixed at account creation (D9); only superusers can change them, in the Django admin. |
 
 ## Resolved
 
@@ -70,6 +92,11 @@ The remaining questions are triaged by their impact on it.
 | Rates | Hourly only, `Employee.hourly_rate`, with snapshots on payroll lines | ADR 005 |
 | Rounding | Final amount rounded to 2 dp with `ROUND_HALF_UP` | ADR 005 |
 | Work-day timezone | Company timezone, `America/Toronto` | ADR 008 |
-| Team notes and worker note creation | Notes are per job. Worker note creation is controlled by the company setting `workers_can_create_notes` (default off). | ADR 009 |
-| How a LeadHand is linked to a job | `Job.lead_hand`: one optional LeadHand per job | data-model.md |
+| Team notes | Notes are per job, everyone can create them, authors can't edit or delete them, they have urgency categories and work offline. The `workers_can_create_notes` setting is superseded. | ADR 009 (2026-11-10 update) |
+| How a LeadHand is linked to a job | They manage a job when they are its `lead_hand` **and** hold an active assignment on it | ADR 011 |
 | Clients | A separate, standalone table, view-only; future payroll report access | ADR 010 |
+| Roles | Four roles (Admin, Manager, LeadHand, Employee = stored `worker`), one per user; all are employees | ADR 011 |
+| Manager scope | Company-wide (D2). Manages LeadHand and Employee accounts, not Managers (D8). | ADR 011 |
+| Admin and Manager attendance for others | Administrative entries: location stored but not flagged, optional reason, must be current (D3) | ADR 011 |
+| Self-approval | Nobody reviews their own timesheet (D4) | ADR 011 |
+| Django admin | Superuser-only | ADR 011 |

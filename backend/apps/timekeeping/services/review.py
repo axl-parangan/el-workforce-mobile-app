@@ -16,6 +16,11 @@ from apps.timekeeping.models import SessionStatus, WorkSession, WorkSessionRevie
 from common.exceptions import ApplicationError
 
 
+class OwnTimesheetReviewError(ApplicationError):
+    status_code = status.HTTP_403_FORBIDDEN
+    default_code = "cannot_review_own_timesheet"
+
+
 class SessionNotReviewableError(ApplicationError):
     status_code = status.HTTP_409_CONFLICT
     default_code = "session_not_reviewable"
@@ -33,7 +38,15 @@ def review_session(
         )
 
     with transaction.atomic():
-        session = WorkSession.objects.select_for_update().get(pk=session_id)
+        session = (
+            WorkSession.objects.select_for_update(of=("self",))
+            .select_related("assignment__employee")
+            .get(pk=session_id)
+        )
+        if session.assignment.employee.user_id == reviewer.pk:
+            raise OwnTimesheetReviewError(
+                "You cannot review your own timesheet. Another Manager or Admin must review it.",
+            )
         if session.session_status != SessionStatus.CLOSED:
             raise SessionNotReviewableError(
                 "Only closed sessions can be reviewed. This session has no accepted clock-out.",

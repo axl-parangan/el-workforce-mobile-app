@@ -3,7 +3,7 @@ from django.core.exceptions import ValidationError
 from django.db import models
 from django.db.models import F, Q
 
-from apps.accounts.models import Role
+from apps.accounts.authorization import Capability, has_capability
 from apps.jobs.constants import DEFAULT_GEOFENCE_RADIUS_METERS
 
 
@@ -18,7 +18,9 @@ class JobStatus(models.TextChoices):
 class Job(models.Model):
     """A construction job.
 
-    - One optional LeadHand per job (an employee whose user has the LeadHand role).
+    - One optional LeadHand per job (an employee whose user may lead jobs). They
+      manage the job only while they also hold an active assignment on it
+      (apps/jobs/selectors/scope.py).
     - The geofence is optional (ADR 004): latitude/longitude are both set or
       both empty; the radius defaults to 100 m and is customisable per job.
     - Jobs are not linked to clients (ADR 010).
@@ -90,7 +92,7 @@ class Job(models.Model):
         super().clean()
         if self.lead_hand_id is not None:
             user = self.lead_hand.user
-            if user is None or user.role != Role.LEADHAND:
+            if not has_capability(user, Capability.JOBS_LEAD):
                 raise ValidationError(
                     {"lead_hand": "The LeadHand must be an employee with a LeadHand user account."}
                 )

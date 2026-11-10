@@ -64,7 +64,7 @@ Each addition is backed by an earlier accepted decision.
 | Where | Added | Why |
 | --- | --- | --- |
 | `COMPANY_SETTINGS` (new, single row) | `workers_can_create_notes` (default `false`), `updated_at`, `updated_by` | An Admin-controlled company setting (ADR 009) |
-| `APP_USER` | `role`, `first_name`, `last_name`, `is_staff`, `is_superuser`, `last_login`, `date_joined` | The application role (ADR 007) plus Django's auth fields. Password hashing is Django's. |
+| `APP_USER` | `role` (`admin`, `manager`, `leadhand`, `worker` = Employee), `first_name`, `last_name`, `is_staff`, `is_superuser`, `last_login`, `date_joined` | The application role (ADR 007, ADR 011) plus Django's auth fields. Password hashing is Django's. `manager` was added on 2026-11-10 by `accounts.0002`, which changes choices only and runs no SQL. |
 | `EMPLOYEE` | `employee_number` (unique, optional), `created_at`, `updated_at` | The separate, non-secret employee identifier (ADR 007) |
 | `JOB` | `created_at`, `updated_at` | Audit |
 | `JOB_ASSIGNMENT` | `updated_at` | Audit |
@@ -73,6 +73,7 @@ Each addition is backed by an earlier accepted decision.
 | `JOB_NOTE` | `updated_by`, `deleted_at`, `deleted_by` | ADR 009: soft deletion with audit information, and moderation |
 | `WORK_SESSION_REVIEW` (new, approved for timekeeping Phase 1) | `session`, `decision`, `reason`, `reviewed_by`, `reviewed_at` | An append-only audit trail; every review decision requires a reason |
 | `WORK_SESSION` (approved for Phase 1) | `exception_flags` (array, no duplicates) | Why the session needs review: location flags from its punches, `future_timestamp` or `clock_out_rejected` |
+| `ATTENDANCE_BATCH` (approved 2026-11-10, ADR 011) | `entry_reason` (text, empty by default) | The optional reason for an administrative entry |
 | `ATTENDANCE_BATCH_ITEM` (approved for Phase 1) | `result_code` | A stable, machine-readable outcome, so retries return exactly the original result |
 
 ## Deviations from the ERD notation
@@ -149,13 +150,13 @@ removes its lines. Services block deleting approved runs.
 | --- | --- |
 | `Job.status` values | planned, active (default), on_hold, completed, cancelled. Punching is intended for active jobs. |
 | `JobAssignment.status` values | active, ended, cancelled |
-| `AttendanceBatch.source` values | `mobile_online`, `mobile_offline_sync`, `admin_entry`. This records how the batch reached the server. The ERD did not define the values. |
+| `AttendanceBatch.source` values | `mobile_online`, `mobile_offline_sync`, `admin_entry`. `admin_entry` marks an Admin or Manager recording attendance for someone else (ADR 011). |
 | `AttendanceBatchItem.result_status` values | pending, accepted, rejected |
 | `WorkSession` status values | `session_status` is open or closed. `review_status` is not_required, pending, approved or rejected. |
 | `PayrollRun.status` values | draft, approved, paid, cancelled |
 | Precision | Coordinates (9,6); accuracy and distance (10,2); `hourly_rate` and `hourly_rate_applied` (10,4); `hours_paid` (9,4); money (12,2); `GeofenceRadius` is a positive integer in metres, as in the ERD |
-| The LeadHand on their own job | To clock themselves in, the LeadHand also needs a `JobAssignment` on that job, because sessions are authorised by assignments. Services can create it automatically. |
-| "Jobs they manage" (notes, group clock) | `Job.lead_hand` is the LeadHand's employee record |
+| The LeadHand on their own job | To clock themselves in, the LeadHand needs an active `JobAssignment` on that job. **None is created automatically.** |
+| "Jobs they manage" (group clock, crew, notes) | **Confirmed 2026-11-10:** `Job.lead_hand` is the LeadHand's employee record **and** the LeadHand holds an active assignment on the job (`apps/jobs/selectors/scope.py`) |
 
 ## Deferred, by decision
 

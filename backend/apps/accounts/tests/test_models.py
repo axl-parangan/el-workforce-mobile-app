@@ -18,14 +18,13 @@ def test_new_users_default_to_worker_role():
     user = User.objects.create_user(email="w@example.com", password="x")
 
     assert user.role == Role.WORKER
-    assert user.is_worker
+    assert user.get_role_display() == "Employee"
 
 
 def test_superusers_default_to_admin_role():
     user = User.objects.create_superuser(email="root@example.com", password="x")
 
     assert user.role == Role.ADMIN
-    assert user.is_admin_role
     assert user.is_staff
     assert user.is_superuser
 
@@ -59,3 +58,10 @@ def test_user_without_password_cannot_log_in():
     user = User.objects.create_user(email="nopass@example.com")
 
     assert not user.has_usable_password()
+
+
+def test_employee_role_keeps_its_stored_value():
+    # The display label changed to "Employee"; the stored value did not (ADR 011).
+    assert Role.WORKER.value == "worker"
+    assert Role.WORKER.label == "Employee"
+    assert Role.MANAGER.value == "manager"

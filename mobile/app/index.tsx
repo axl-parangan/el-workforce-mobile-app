@@ -10,16 +10,19 @@ export default function Index() {
   if (status !== 'signedIn') return <Redirect href="/sign-in" />;
 
   switch (user.role) {
-    case 'worker':
-      return <Redirect href="/worker" />;
+    case 'admin':
+      return <Redirect href="/admin" />;
+    case 'manager':
+      return <Redirect href="/manager" />;
     case 'leadhand':
       return <Redirect href="/leadhand" />;
-    case 'admin':
-      // TODO: confirm whether Admins use the mobile app (see docs/development/open-questions.md).
+    case 'worker':
+      return <Redirect href="/worker" />;
+    case 'unknown':
       return (
         <PlaceholderScreen
-          title="Admin"
-          description="Administration is not available in the mobile app yet."
+          title="Update required"
+          description="This version of the app does not support your account role. Please update the app."
         />
       );
   }

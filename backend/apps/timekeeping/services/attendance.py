@@ -8,6 +8,12 @@ Idempotency (ADR 002): the client-generated ``event_id`` is stored as
 ``AttendanceBatch.idempotency_key`` (unique). Re-sending an event returns the
 stored batch and its items unchanged. A concurrent duplicate blocks on the
 unique index until the first transaction commits, then replays its result.
+
+Who may record what (ADR 011): everyone with an employee record records their
+own attendance; LeadHands record for the crew of jobs they manage; Admins and
+Managers record for anyone. A company-wide user's entry for someone else is an
+administrative entry (``source = admin_entry``): its location is stored but
+not used to flag sessions, and it must be current (no backdating).
 """
 
 from __future__ import annotations
@@ -21,8 +27,10 @@ from django.db import IntegrityError, transaction
 from django.utils import timezone
 from rest_framework import status
 
-from apps.accounts.models import Role, User
+from apps.accounts.authorization import Capability, has_any_capability, has_capability
+from apps.accounts.models import User
 from apps.jobs.models import Job
+from apps.jobs.selectors.scope import can_record_attendance_for_others
 from apps.timekeeping.models import (
     AttendanceBatch,
     AttendanceBatchItem,
@@ -46,6 +54,13 @@ class AttendanceForbiddenError(ApplicationError):
 
     status_code = status.HTTP_403_FORBIDDEN
     default_code = "attendance_forbidden"
+
+
+class AdminEntryNotCurrentError(ApplicationError):
+    """An Admin/Manager entry for other employees is too old (backdating is not allowed)."""
+
+    status_code = status.HTTP_400_BAD_REQUEST
+    default_code = "admin_entry_not_current"
 
 
 class IdempotencyConflictError(ApplicationError):
@@ -72,6 +87,8 @@ class AttendanceEvent:
     latitude: object = None
     longitude: object = None
     accuracy_meters: object = None
+    # Optional note, mainly for administrative entries.
+    reason: str = ""
 
     @property
     def is_group(self) -> bool:
@@ -92,11 +109,21 @@ def record_attendance(
         return _replay(existing, actor=actor, event=event)
 
     employees = _authorized_employees(actor, event)
+    received_at = timezone.now()
+    if _is_admin_entry(actor, employees):
+        source = BatchSource.ADMIN_ENTRY
+        _require_current_admin_entry(event, received_at)
 
     assessment = _location_assessment(event)
     try:
         with transaction.atomic():
-            batch = _create_batch(actor=actor, event=event, source=source, assessment=assessment)
+            batch = _create_batch(
+                actor=actor,
+                event=event,
+                source=source,
+                assessment=assessment,
+                received_at=received_at,
+            )
             flags = _batch_exception_flags(batch, assessment)
             # Lock in a stable order so concurrent batches cannot deadlock.
             locked = Employee.objects.select_for_update().filter(
@@ -120,7 +147,12 @@ def record_attendance(
 
 
 def _authorized_employees(actor: User, event: AttendanceEvent) -> list[Employee]:
+    """Who this event may record attendance for. Raises if the actor may not record it."""
     if not event.is_group:
+        if not has_capability(actor, Capability.ATTENDANCE_RECORD_SELF):
+            raise AttendanceForbiddenError(
+                "Your role cannot record attendance.", code="attendance_not_allowed"
+            )
         employee = employee_for_user(actor)
         if employee is None:
             raise AttendanceForbiddenError(
@@ -128,18 +160,44 @@ def _authorized_employees(actor: User, event: AttendanceEvent) -> list[Employee]
             )
         return [employee]
 
-    if actor.role != Role.LEADHAND:
+    if not has_any_capability(
+        actor, Capability.ATTENDANCE_RECORD_ANY, Capability.ATTENDANCE_RECORD_CREW
+    ):
         raise AttendanceForbiddenError(
-            "Only LeadHands can record attendance for other employees.",
-            code="leadhand_role_required",
+            "Your role cannot record attendance for other employees.",
+            code="group_attendance_not_allowed",
         )
-    actor_employee = employee_for_user(actor)
-    if actor_employee is None or event.job.lead_hand_id != actor_employee.pk:
+    if not can_record_attendance_for_others(actor, event.job):
         raise AttendanceForbiddenError(
-            f"You are not the LeadHand of job {event.job.job_number}.",
+            f"You are not the LeadHand of job {event.job.job_number}, "
+            "or you are not actively assigned to it.",
             code="not_job_lead_hand",
         )
     return list(event.employees)
+
+
+def _is_admin_entry(actor: User, employees: list[Employee]) -> bool:
+    """A company-wide user recording attendance for anyone other than themselves."""
+    if not has_capability(actor, Capability.ATTENDANCE_RECORD_ANY):
+        return False
+    own = employee_for_user(actor)
+    return any(own is None or employee.pk != own.pk for employee in employees)
+
+
+def _require_current_admin_entry(event: AttendanceEvent, received_at: datetime) -> None:
+    """Administrative entries must describe *now*, not the past.
+
+    Backdated attendance belongs to the future correction workflow, which will
+    record the original values, the change and its reason. Until then an Admin
+    or Manager cannot use their company-wide access to enter past times.
+    """
+    max_age = timedelta(seconds=settings.ATTENDANCE_ADMIN_ENTRY_MAX_AGE_SECONDS)
+    if received_at - event.captured_at > max_age:
+        raise AdminEntryNotCurrentError(
+            "Administrative attendance must be recorded at the time it happens. "
+            "Past times will be handled by the correction workflow.",
+            details={"max_age_seconds": settings.ATTENDANCE_ADMIN_ENTRY_MAX_AGE_SECONDS},
+        )
 
 
 # --- Idempotent replay -----------------------------------------------------------
@@ -188,7 +246,12 @@ def _location_assessment(event: AttendanceEvent) -> LocationAssessment:
 
 
 def _create_batch(
-    *, actor: User, event: AttendanceEvent, source: str, assessment: LocationAssessment
+    *,
+    actor: User,
+    event: AttendanceEvent,
+    source: str,
+    assessment: LocationAssessment,
+    received_at: datetime,
 ) -> AttendanceBatch:
     coordinates = assessment.coordinates
     return AttendanceBatch.objects.create(
@@ -198,7 +261,8 @@ def _create_batch(
         action_type=PunchType(event.action_type),
         source=source,
         captured_at=event.captured_at,
-        received_at=timezone.now(),
+        received_at=received_at,
+        entry_reason=event.reason,
         latitude=coordinates.latitude if coordinates else None,
         longitude=coordinates.longitude if coordinates else None,
         accuracy_meters=assessment.accuracy_meters,
@@ -209,8 +273,14 @@ def _create_batch(
 
 
 def _batch_exception_flags(batch: AttendanceBatch, assessment: LocationAssessment) -> list[str]:
-    """Review reasons that apply to every employee in the batch."""
-    flags = [SessionExceptionFlag(flag.value) for flag in assessment.review_flags]
+    """Review reasons that apply to every employee in the batch.
+
+    Administrative entries are often made away from the site (e.g. an office),
+    so their location is stored for reference but never flags the session.
+    """
+    flags = []
+    if batch.source != BatchSource.ADMIN_ENTRY:
+        flags = [SessionExceptionFlag(flag.value) for flag in assessment.review_flags]
     tolerance = timedelta(seconds=settings.ATTENDANCE_FUTURE_TOLERANCE_SECONDS)
     if batch.captured_at > batch.received_at + tolerance:
         flags.append(SessionExceptionFlag.FUTURE_TIMESTAMP)

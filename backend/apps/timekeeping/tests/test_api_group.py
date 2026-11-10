@@ -122,10 +122,8 @@ def test_workers_cannot_use_group_endpoints(client_for, job, crew):
 
 
 def test_leadhand_clocks_themselves_in_with_a_valid_assignment(
-    leadhand_client, leadhand, job, crew, assign
+    leadhand_client, leadhand, job, crew
 ):
-    assign(leadhand, job)
-
     response = leadhand_client.post(
         url("group-clock-in"), event(job, employee_ids=[leadhand.pk, *ids(crew)]), format="json"
     )
@@ -135,18 +133,22 @@ def test_leadhand_clocks_themselves_in_with_a_valid_assignment(
     assert WorkSession.objects.filter(assignment__employee=leadhand).exists()
 
 
-def test_leadhand_without_own_assignment_is_not_auto_assigned(leadhand_client, leadhand, job, crew):
+def test_leadhand_without_an_active_assignment_does_not_manage_the_job(
+    leadhand_client, leadhand, make_job, crew
+):
+    # Named as the job's LeadHand but not assigned to it: both are required (ADR 011).
+    unassigned_job = make_job(lead_hand=leadhand)
+
     response = leadhand_client.post(
-        url("group-clock-in"), event(job, employee_ids=[leadhand.pk]), format="json"
+        url("group-clock-in"), event(unassigned_job, employee_ids=[leadhand.pk]), format="json"
     )
 
-    assert results_by_employee(response)[leadhand.pk]["code"] == "no_active_assignment"
-    assert not leadhand.job_assignments.exists()
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "not_job_lead_hand"
+    assert not leadhand.job_assignments.filter(job=unassigned_job).exists()  # never auto-assigned
 
 
-def test_leadhand_self_punch_via_individual_endpoint(leadhand_client, leadhand, job, assign):
-    assign(leadhand, job)
-
+def test_leadhand_self_punch_via_individual_endpoint(leadhand_client, leadhand, job):
     response = leadhand_client.post(url("clock-in"), event(job), format="json")
 
     assert response.status_code == 201

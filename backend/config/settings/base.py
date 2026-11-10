@@ -29,7 +29,8 @@ if _env_file.is_file():
 # ---------------------------------------------------------------------------
 
 DJANGO_APPS = [
-    "django.contrib.admin",
+    # Django admin, restricted to superusers.
+    "config.admin_site.SuperuserAdminConfig",
     "django.contrib.auth",
     "django.contrib.contenttypes",
     "django.contrib.sessions",
@@ -155,6 +156,11 @@ LOCATION_MAX_ACCURACY_METERS = Decimal(env("LOCATION_MAX_ACCURACY_METERS", defau
 # A punch whose device time is further ahead of the server's received time
 # than this is accepted but flagged ``future_timestamp`` for review.
 ATTENDANCE_FUTURE_TOLERANCE_SECONDS = env.int("ATTENDANCE_FUTURE_TOLERANCE_SECONDS", default=300)
+# Admin/Manager entries for other employees must be this fresh. Backdated
+# attendance is left to the future correction workflow.
+ATTENDANCE_ADMIN_ENTRY_MAX_AGE_SECONDS = env.int(
+    "ATTENDANCE_ADMIN_ENTRY_MAX_AGE_SECONDS", default=900
+)
 # Upper bounds for one request.
 ATTENDANCE_MAX_GROUP_SIZE = 100
 ATTENDANCE_MAX_SYNC_EVENTS = 100

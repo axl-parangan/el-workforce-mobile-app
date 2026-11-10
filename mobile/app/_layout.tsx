@@ -33,12 +33,21 @@ function RootNavigator() {
         <Stack.Screen name="(auth)" />
       </Stack.Protected>
 
-      <Stack.Protected guard={role === 'worker'}>
-        <Stack.Screen name="(worker)" />
+      <Stack.Protected guard={role === 'admin'}>
+        <Stack.Screen name="(admin)" />
+      </Stack.Protected>
+
+      <Stack.Protected guard={role === 'manager'}>
+        <Stack.Screen name="(manager)" />
       </Stack.Protected>
 
       <Stack.Protected guard={role === 'leadhand'}>
         <Stack.Screen name="(leadhand)" />
+      </Stack.Protected>
+
+      {/* "worker" is the stored value of the Employee role. */}
+      <Stack.Protected guard={role === 'worker'}>
+        <Stack.Screen name="(worker)" />
       </Stack.Protected>
     </Stack>
   );

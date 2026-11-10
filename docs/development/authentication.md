@@ -29,43 +29,63 @@
 
 ## Roles
 
-`accounts.User.role` is one of `admin`, `leadhand` or `worker`, with
-`worker` as the default. `createsuperuser` sets `admin`.
+`accounts.User.role` holds exactly one of these values (ADR 011):
+
+| Role | Stored value | Notes |
+| --- | --- | --- |
+| Admin | `admin` | `createsuperuser` sets it |
+| Manager | `manager` | Company-wide operations |
+| LeadHand | `leadhand` | Employee plus crew duties on the jobs they manage |
+| Employee | `worker` (the default) | Display label "Employee"; the stored value is unchanged |
 
 - A custom user model has been in place since the first migration.
 - **Login is email and password** (ADR 007):
   - `USERNAME_FIELD = "email"`; there is no username field
   - emails are stored lowercase, with a case-insensitive unique constraint,
     so login is case-insensitive
-  - accounts can be created without a password; they can't log in until a
-    password is set
+  - accounts start with an unusable password and can't log in until it is
+    set through the password-set link (sending it waits for email delivery)
 - A **User is not an Employee.** Employees are defined in the `workforce`
   app and optionally link one-to-one to a User. Employees without accounts
-  can still have attendance recorded by a LeadHand. LeadHands and
-  self-clocking workers must have accounts.
-- `role` is the **application** role. Django's `is_staff` and
-  `is_superuser` control only Django admin access.
+  can still have attendance recorded for them.
+  - **Every account has an Employee record**, including Admins, Managers and
+    LeadHands. `apps/accounts/services/accounts.py` guarantees this.
+- **The role is read from the database on every request.** It is not stored
+  in the token, so role and active-status changes apply immediately.
+- **The Django admin is superuser-only.** Neither the role nor `is_staff`
+  grants access.
 - **Future login methods** (phone, employee number) are added as additional
   `AUTHENTICATION_BACKENDS`, plus a SimpleJWT serializer that accepts the
   identifier. Tokens and the mobile client stay the same. The employee number
   is never a secret or a password.
 
-## Authorisation approach (intended)
+## Authorisation
 
-Two layers:
+There are two layers, and both are centralised.
 
-1. **Coarse, role-based checks** on views, using `common/permissions.py`:
-   `IsAdmin`, `IsLeadHand`, `IsLeadHandOrAdmin` and `IsWorker`. These only
-   answer whether the user holds a role.
-2. **Object- and relationship-level rules** in the owning app's services and
-   selectors. For example:
-   - a worker sees only their own attendance
-   - a LeadHand may clock only workers assigned to the same job
-   - a LeadHand may edit only jobs they are allowed to manage
+1. **Capabilities.** `apps/accounts/authorization.py` maps each role to
+   named abilities. Code asks `has_capability(user, Capability.X)`, and
+   views use `common.permissions.requires(Capability.X, ...)`. **Nothing
+   else compares role names**; `tests/test_authorization_centralized.py`
+   enforces this.
+2. **Scope.** `apps/jobs/selectors/scope.py` decides which jobs and crews a
+   user may act on:
+   - Managers and Admins: company-wide.
+   - LeadHands: jobs where they are the `lead_hand` **and** hold an active
+     assignment, plus those jobs' crews.
+   - Employees: their own records only.
 
-   These rules depend on assignment data, so they belong next to the domain
-   logic and are covered by service tests. They are not handled by DRF
-   object permissions.
+   Out-of-scope ids return 404.
+
+**Account management.** Who may create or manage which accounts is decided
+by `manageable_roles` and enforced in `apps/accounts/services/accounts.py`:
+
+- Managers manage LeadHand and Employee accounts.
+- Admins also manage Managers.
+- Only superusers handle Admin accounts.
+- No one manages their own account through the service.
+- The service never sets staff or superuser flags.
+- Roles are fixed when an account is created.
 
 Every endpoint defaults to `IsAuthenticated`. Public endpoints such as
 health and token must opt out explicitly.

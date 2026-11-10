@@ -1,6 +1,6 @@
 # ADR 007: Employees, user accounts, and email login
 
-- Status: Accepted
+- Status: Accepted. Roles revised by ADR 011.
 - Date: 2026-11-06
 
 ## Context
@@ -60,3 +60,13 @@ the mobile token handling do not change.
 - Changing the login method changed the initial `accounts` migration. This
   was possible only because nothing had been deployed. From now on, schema
   changes need new migrations.
+
+## Update (2026-11-10, ADR 011)
+
+- There are four roles: Admin, Manager, LeadHand and Employee. The Employee
+  role keeps the stored value `worker`.
+- Admins, Managers and LeadHands are also employees and have Employee
+  records. Accounts created through `apps/accounts/services/accounts.py`
+  always get one.
+- Accounts are provisioned with an unusable password and a password-set
+  link. Sending the link waits for email delivery.

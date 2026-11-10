@@ -1,47 +1,35 @@
-"""Reusable, role-based DRF permission classes.
+"""DRF permission classes backed by the central capability map.
 
-These only answer "does the user hold one of these roles?". Object-level
-rules such as "a LeadHand may only clock workers assigned to the same job"
-are business rules: they belong in the owning app's services/selectors and
-are enforced there, not encoded here. See docs/development/authentication.md.
+Use ``requires(...)`` in views; never compare role names here or in views.
+Object-level rules ("is this employee in this LeadHand's crew?") live in
+scope selectors and services. See apps/accounts/authorization.py.
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 from rest_framework.permissions import BasePermission
 
-from apps.accounts.models import Role
+from apps.accounts.authorization import Capability, has_any_capability
 
 if TYPE_CHECKING:
     from rest_framework.request import Request
     from rest_framework.views import APIView
 
 
-class HasRole(BasePermission):
-    """Grants access to authenticated users whose role is in ``allowed_roles``."""
+class HasCapability(BasePermission):
+    """Grants access when the user holds at least one of ``capabilities``."""
 
-    allowed_roles: frozenset[str] = frozenset()
+    capabilities: ClassVar[tuple[Capability, ...]] = ()
 
     def has_permission(self, request: Request, view: APIView) -> bool:
-        user = request.user
-        return bool(
-            user and user.is_authenticated and getattr(user, "role", None) in self.allowed_roles
-        )
+        return bool(self.capabilities) and has_any_capability(request.user, *self.capabilities)
 
 
-class IsAdmin(HasRole):
-    allowed_roles = frozenset({Role.ADMIN})
-
-
-class IsLeadHand(HasRole):
-    allowed_roles = frozenset({Role.LEADHAND})
-
-
-class IsLeadHandOrAdmin(HasRole):
-    allowed_roles = frozenset({Role.LEADHAND, Role.ADMIN})
-
-
-class IsWorker(HasRole):
-    allowed_roles = frozenset({Role.WORKER})
+def requires(*capabilities: Capability) -> type[HasCapability]:
+    """A permission class granting access with any one of ``capabilities``."""
+    if not capabilities:
+        raise ValueError("requires() needs at least one capability")
+    name = "Requires_" + "_or_".join(c.value.replace(".", "_") for c in capabilities)
+    return type(name, (HasCapability,), {"capabilities": tuple(capabilities)})

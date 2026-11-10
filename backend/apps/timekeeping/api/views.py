@@ -8,8 +8,6 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.accounts.models import Role
-from apps.jobs.models import Job
 from apps.timekeeping.models import BatchItemResult, ItemResultCode, PunchType
 from apps.timekeeping.selectors import attendance as selectors
 from apps.timekeeping.services.attendance import (
@@ -23,9 +21,10 @@ from common.exceptions import ApplicationError
 
 from . import serializers as s
 from .permissions import (
-    CanRecordGroupAttendance,
+    CanRecordForOthers,
     CanReviewAttendance,
     CanViewCrewStatus,
+    CanViewOwnAttendance,
     CanViewStaffAttendance,
 )
 
@@ -88,9 +87,12 @@ class ClockOutView(_SelfPunchView):
 
 
 class _GroupPunchView(APIView):
-    """Returns 201 with one result per employee, including partial rejections."""
+    """Records attendance for other employees: LeadHands for the crew of jobs they
+    manage, Admins and Managers company-wide (administrative entries).
 
-    permission_classes = (CanRecordGroupAttendance,)
+    Returns 201 with one result per employee, including partial rejections."""
+
+    permission_classes = (CanRecordForOthers,)
     action_type: str
 
     def post(self, request: Request) -> Response:
@@ -164,6 +166,8 @@ class SyncView(APIView):
 
 
 class StatusView(APIView):
+    permission_classes = (CanViewOwnAttendance,)
+
     def get(self, request: Request) -> Response:
         employee = _employee_or_403(request.user)
         session = selectors.open_session_for_employee(employee)
@@ -177,6 +181,7 @@ class StatusView(APIView):
 
 
 class SessionListView(generics.ListAPIView):
+    permission_classes = (CanViewOwnAttendance,)
     serializer_class = s.WorkSessionSerializer
 
     def get_queryset(self):
@@ -187,6 +192,7 @@ class SessionListView(generics.ListAPIView):
 
 
 class SessionDetailView(generics.RetrieveAPIView):
+    permission_classes = (CanViewOwnAttendance,)
     serializer_class = s.WorkSessionSerializer
 
     def get_queryset(self):
@@ -200,11 +206,9 @@ class CrewStatusView(APIView):
     permission_classes = (CanViewCrewStatus,)
 
     def get(self, request: Request, job_id: int) -> Response:
-        job = Job.objects.filter(pk=job_id).first()
-        if job is None or (
-            request.user.role == Role.LEADHAND
-            and not Job.objects.filter(pk=job_id, lead_hand__user=request.user).exists()
-        ):
+        job = selectors.crew_job_for(request.user, job_id)
+        if job is None:
+            # Unknown job, or one outside the caller's scope: indistinguishable.
             raise Http404
         crew = [s.crew_member_data(member) for member in selectors.crew_status(job)]
         return Response({"job": {"id": job.pk, "job_number": job.job_number}, "crew": crew})

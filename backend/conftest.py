@@ -64,8 +64,11 @@ def make_assignment(db, make_employee, make_job):
     from apps.jobs.models import JobAssignment
 
     def _make_assignment(**fields) -> JobAssignment:
-        fields.setdefault("employee", make_employee())
-        fields.setdefault("job", make_job())
+        # Create defaults only when missing (setdefault would build them eagerly).
+        if "employee" not in fields:
+            fields["employee"] = make_employee()
+        if "job" not in fields:
+            fields["job"] = make_job()
         fields.setdefault("assigned_by", fields["job"].created_by)
         return JobAssignment.objects.create(**fields)
 

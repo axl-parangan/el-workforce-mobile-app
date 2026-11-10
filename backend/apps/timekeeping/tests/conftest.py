@@ -51,13 +51,18 @@ def worker(make_employee):
 
 
 @pytest.fixture
-def job(make_job, leadhand):
-    return make_job(job_number="J-100", lead_hand=leadhand, **SITE)
+def job(make_job, make_assignment, leadhand):
+    """Led by ``leadhand``, who is also actively assigned to it, so they manage it."""
+    job = make_job(job_number="J-100", lead_hand=leadhand, **SITE)
+    make_assignment(employee=leadhand, job=job)
+    return job
 
 
 @pytest.fixture
-def other_job(make_job, leadhand):
-    return make_job(job_number="J-200", lead_hand=leadhand, **SITE)
+def other_job(make_job, make_assignment, leadhand):
+    job = make_job(job_number="J-200", lead_hand=leadhand, **SITE)
+    make_assignment(employee=leadhand, job=job)
+    return job
 
 
 @pytest.fixture

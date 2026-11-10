@@ -33,6 +33,8 @@ class AttendanceBatch(models.Model):
     # Device timestamp (audit; also the instant the work date is derived from).
     captured_at = models.DateTimeField()
     received_at = models.DateTimeField(default=timezone.now)
+    # Optional explanation, mainly for administrative entries (source=admin_entry).
+    entry_reason = models.TextField(blank=True, default="")
 
     # Sanitised by assess_punch_location: invalid values are stored as NULL.
     latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)

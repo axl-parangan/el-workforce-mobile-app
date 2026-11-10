@@ -15,6 +15,10 @@ GPS-verified punches, and offline-first timekeeping.
 > - **timekeeping (Phase 1):** individual and group clock-in/out, offline
 >   sync with idempotency, location flags, history, and staff review (see
 >   the [timekeeping API](docs/api/timekeeping.md))
+> - **roles and authorization:** Admin, Manager, LeadHand and Employee roles,
+>   with a central capability map, shared job and crew scope, guarded
+>   account provisioning, and a superuser-only Django admin (see
+>   [ADR 011](docs/decisions/011-roles-and-authorization.md))
 >
 > Jobs, payroll and team notes endpoints are next. See the
 > [open questions](docs/development/open-questions.md).
@@ -137,7 +141,9 @@ make logs
 curl http://localhost:8000/api/v1/health/   # {"status":"ok","database":"ok"}
 ```
 
-- The Django admin is at <http://localhost:8000/admin/>.
+- The Django admin is at <http://localhost:8000/admin/>. It is
+  **superuser-only** (create one with `make createsuperuser`). Admins and
+  Managers use the mobile app.
 - `make down` stops the containers. The database volume is kept.
 
 ## Starting the mobile app
@@ -209,3 +215,4 @@ production-ready:
 - [Open questions (triaged)](docs/development/open-questions.md)
 - [Data model](docs/development/data-model.md)
 - [ADR 010: Clients](docs/decisions/010-clients.md)
+- [ADR 011: Roles and centralised authorization](docs/decisions/011-roles-and-authorization.md)

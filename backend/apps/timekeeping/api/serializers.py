@@ -11,6 +11,7 @@ from apps.jobs.models import Job
 from apps.timekeeping.models import (
     AttendanceBatch,
     AttendanceBatchItem,
+    BatchSource,
     PunchType,
     ReviewDecision,
     ReviewStatus,
@@ -82,10 +83,15 @@ class _EventSerializer(serializers.Serializer):
             latitude=latitude,
             longitude=longitude,
             accuracy_meters=accuracy,
+            reason=data.get("reason", ""),
         )
 
 
 class _EmployeeIdsMixin(serializers.Serializer):
+    # Optional note for entries made on behalf of others (e.g. administrative entries).
+    reason = serializers.CharField(
+        required=False, allow_blank=True, max_length=500, trim_whitespace=True
+    )
     employee_ids = serializers.ListField(
         child=serializers.IntegerField(min_value=1),
         allow_empty=False,
@@ -167,7 +173,9 @@ def _location(batch: AttendanceBatch) -> dict:
     return {
         "status": batch.location_status,
         "flags": list(batch.location_flags),
-        "requires_review": flags_require_review(batch.location_flags),
+        # Administrative entries keep their location for reference only (ADR 011).
+        "requires_review": batch.source != BatchSource.ADMIN_ENTRY
+        and flags_require_review(batch.location_flags),
         "latitude": _decimal(batch.latitude),
         "longitude": _decimal(batch.longitude),
         "accuracy_meters": _decimal(batch.accuracy_meters),
@@ -211,6 +219,7 @@ def batch_result_data(batch: AttendanceBatch, *, replayed: bool) -> dict:
         "performed_by": _user(batch.performed_by),
         "captured_at": _datetime(batch.captured_at),
         "received_at": _datetime(batch.received_at),
+        "entry_reason": batch.entry_reason,
         "location": _location(batch),
         "results": [item_result_data(item) for item in batch.items.all()],
         "replayed": replayed,

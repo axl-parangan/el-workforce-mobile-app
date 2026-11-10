@@ -1,6 +1,6 @@
 # ADR 009: Team notes are job-based shared notes
 
-- Status: Accepted (scope and permissions); schema implemented, services pending
+- Status: **Partly superseded** (2026-11-10, see the update below); services pending
 - Date: 2026-11-06 (revised: worker note creation is a company setting)
 
 ## Context
@@ -61,3 +61,18 @@ a messaging platform.
 - Whether notes can be read or created offline is not yet decided. The
   outbox (ADR 002) can support offline creation later without schema
   changes, provided notes carry a client-generated UUID.
+
+## Update (2026-11-10): decisions that supersede parts of this ADR
+
+These were confirmed with the role restructuring. They will be implemented in
+the team-notes milestone; nothing has changed in code yet.
+
+- **Everyone can create team notes.** The `workers_can_create_notes`
+  company setting is no longer needed. The column stays until the notes
+  milestone decides whether to drop it, which would need its own migration.
+- **Authors cannot edit or delete their notes.** The soft-delete and
+  "updated by" fields remain for moderation, which is still to be defined.
+- **Notes get a category** showing urgency. This needs a new column.
+- **Notes can be read and created offline.** This needs a client-generated
+  UUID on notes (ADR 002 outbox).
+- **Manager note permissions** are deferred (decision D21).

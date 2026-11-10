@@ -1,28 +1,20 @@
-"""Who may use the timekeeping endpoints.
+"""Who may use the timekeeping endpoints (capability checks only).
 
-Role checks only. Relationship rules ("is this LeadHand the job's LeadHand?")
-are enforced in services and selectors.
-
-Assumption (documented in docs/api/timekeeping.md): reviewer access has not
-been defined in detail, so only Admins can make review decisions. LeadHands
-can *view* attendance, exceptions and rejections for the jobs they lead.
-Change the classes below to widen or narrow access.
+Which records a LeadHand or Employee may touch is decided by scope selectors
+(apps/jobs/selectors/scope.py) and services. Role definitions live in
+apps/accounts/authorization.py.
 """
 
-from common.permissions import IsAdmin, IsLeadHand, IsLeadHandOrAdmin
+from apps.accounts.authorization import Capability
+from common.permissions import requires
 
+CanViewOwnAttendance = requires(Capability.ATTENDANCE_VIEW_OWN)
 
-class CanRecordGroupAttendance(IsLeadHand):
-    pass
+CanRecordForOthers = requires(Capability.ATTENDANCE_RECORD_ANY, Capability.ATTENDANCE_RECORD_CREW)
 
+CanViewCrewStatus = requires(Capability.ATTENDANCE_VIEW_ANY, Capability.ATTENDANCE_VIEW_CREW)
 
-class CanViewCrewStatus(IsLeadHandOrAdmin):
-    pass
+CanViewStaffAttendance = requires(Capability.ATTENDANCE_VIEW_ANY, Capability.ATTENDANCE_VIEW_CREW)
 
-
-class CanViewStaffAttendance(IsLeadHandOrAdmin):
-    pass
-
-
-class CanReviewAttendance(IsAdmin):
-    pass
+# Admins and Managers. Reviewing one's own timesheet is refused by the service.
+CanReviewAttendance = requires(Capability.ATTENDANCE_REVIEW)

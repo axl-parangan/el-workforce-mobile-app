@@ -9,8 +9,9 @@ from __future__ import annotations
 
 from django.db.models import OuterRef, Prefetch, QuerySet, Subquery
 
-from apps.accounts.models import Role, User
+from apps.accounts.models import User
 from apps.jobs.models import AssignmentStatus, Job, JobAssignment
+from apps.jobs.selectors.scope import attendance_jobs_for
 from apps.timekeeping.models import (
     AttendanceBatch,
     AttendanceBatchItem,
@@ -93,13 +94,11 @@ def sessions_for_employee(
 
 
 def staff_sessions_for_user(user: User) -> QuerySet[WorkSession]:
-    """Sessions a staff user may see: Admins see all; LeadHands see jobs they lead."""
-    queryset = WorkSession.objects.all()
-    if user.role == Role.ADMIN:
-        return queryset
-    if user.role == Role.LEADHAND:
-        return queryset.filter(assignment__job__lead_hand__user=user)
-    return queryset.none()
+    """Sessions a staff user may see: company-wide, or the jobs they manage as LeadHand."""
+    jobs = attendance_jobs_for(user)
+    if jobs is None:
+        return WorkSession.objects.all()
+    return WorkSession.objects.filter(assignment__job__in=jobs)
 
 
 def staff_session_list(
@@ -136,10 +135,9 @@ def staff_rejected_items(
 ) -> QuerySet[AttendanceBatchItem]:
     """Rejected attendance events (synchronisation exceptions) visible to a staff user."""
     queryset = AttendanceBatchItem.objects.filter(result_status=BatchItemResult.REJECTED)
-    if user.role == Role.LEADHAND:
-        queryset = queryset.filter(batch__job__lead_hand__user=user)
-    elif user.role != Role.ADMIN:
-        return queryset.none()
+    jobs = attendance_jobs_for(user)
+    if jobs is not None:
+        queryset = queryset.filter(batch__job__in=jobs)
     if job_id is not None:
         queryset = queryset.filter(batch__job_id=job_id)
     if employee_id is not None:
@@ -147,6 +145,13 @@ def staff_rejected_items(
     return queryset.select_related("employee", "batch__job", "batch__performed_by").order_by(
         "-batch__captured_at", "-id"
     )
+
+
+def crew_job_for(user: User, job_id: int) -> Job | None:
+    """The job whose crew ``user`` may view, or None (company-wide or a job they manage)."""
+    jobs = attendance_jobs_for(user)
+    queryset = Job.objects.all() if jobs is None else jobs
+    return queryset.filter(pk=job_id).first()
 
 
 def crew_status(job: Job) -> list[dict]:

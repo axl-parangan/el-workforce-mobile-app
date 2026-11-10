@@ -3,7 +3,8 @@
 ``User`` is a *login identity* plus its application role. It is not the
 employee: employment data lives on ``workforce.Employee``, which links to
 ``User`` through an optional one-to-one relation (``user.employee``).
-Not every employee has a user account; LeadHands and self-clocking workers do.
+Not every employee has a user account, but every account created through
+``apps.accounts.services.accounts`` gets an Employee record (ADR 011).
 """
 
 from django.contrib.auth.models import AbstractUser, BaseUserManager
@@ -12,9 +13,19 @@ from django.db.models.functions import Lower
 
 
 class Role(models.TextChoices):
+    """Application roles (ADR 011). A user holds exactly one.
+
+    What each role may do is defined only in ``apps/accounts/authorization.py``;
+    other code asks for a capability instead of comparing role names.
+
+    The Employee role keeps its original stored value ``worker`` (only the
+    display label changed), so no data migration or API change was needed.
+    """
+
     ADMIN = "admin", "Admin"
+    MANAGER = "manager", "Manager"
     LEADHAND = "leadhand", "LeadHand"
-    WORKER = "worker", "Worker"
+    WORKER = "worker", "Employee"
 
 
 def normalize_email_address(email: str) -> str:
@@ -83,15 +94,3 @@ class User(AbstractUser):
         if self.email:
             self.email = normalize_email_address(self.email)
         super().save(*args, **kwargs)
-
-    @property
-    def is_admin_role(self) -> bool:
-        return self.role == Role.ADMIN
-
-    @property
-    def is_leadhand(self) -> bool:
-        return self.role == Role.LEADHAND
-
-    @property
-    def is_worker(self) -> bool:
-        return self.role == Role.WORKER

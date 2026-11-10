@@ -5,20 +5,24 @@ Errors use the standard envelope (`docs/api/README.md`).
 
 | Method | Path | Who | Purpose |
 | --- | --- | --- | --- |
-| POST | `timekeeping/clock-in/` | Any user linked to an employee | Clock yourself in |
-| POST | `timekeeping/clock-out/` | Any user linked to an employee | Clock yourself out |
-| POST | `timekeeping/group-clock-in/` | LeadHand of the job | Clock several employees in |
-| POST | `timekeeping/group-clock-out/` | LeadHand of the job | Clock several employees out |
+| POST | `timekeeping/clock-in/` | Every role, with an employee record | Clock yourself in |
+| POST | `timekeeping/clock-out/` | Every role, with an employee record | Clock yourself out |
+| POST | `timekeeping/group-clock-in/` | LeadHand (jobs they manage), Manager, Admin | Clock several employees in |
+| POST | `timekeeping/group-clock-out/` | LeadHand (jobs they manage), Manager, Admin | Clock several employees out |
 | POST | `timekeeping/sync/` | As for the event types above | Upload the offline queue |
-| GET | `timekeeping/status/` | Any user linked to an employee | Am I clocked in? |
-| GET | `timekeeping/sessions/` | Any user linked to an employee | My attendance history (paginated) |
-| GET | `timekeeping/sessions/{id}/` | Any user linked to an employee | One of my sessions (404 if not mine) |
-| GET | `timekeeping/jobs/{job_id}/crew/` | LeadHand of the job, Admin | Assigned crew and who is clocked in |
-| GET | `staff/attendance/` | Admin (all), LeadHand (jobs they lead) | Attendance records |
-| GET | `staff/attendance/exceptions/` | Admin, LeadHand (jobs they lead) | Sessions pending review |
-| GET | `staff/attendance/rejected-events/` | Admin, LeadHand (jobs they lead) | Rejected punches (sync exceptions) |
-| GET | `staff/attendance/{id}/` | Admin, LeadHand (jobs they lead) | Session with review history |
-| POST | `staff/attendance/{id}/review/` | **Admin only** | Approve or reject a session |
+| GET | `timekeeping/status/` | Every role, with an employee record | Am I clocked in? |
+| GET | `timekeeping/sessions/` | Every role, with an employee record | My attendance history (paginated; always personal) |
+| GET | `timekeeping/sessions/{id}/` | Every role, with an employee record | One of my sessions (404 if not mine) |
+| GET | `timekeeping/jobs/{job_id}/crew/` | LeadHand (jobs they manage), Manager, Admin | Assigned crew and who is clocked in |
+| GET | `staff/attendance/` | LeadHand (jobs they manage), Manager, Admin | Attendance records |
+| GET | `staff/attendance/exceptions/` | LeadHand (jobs they manage), Manager, Admin | Sessions pending review |
+| GET | `staff/attendance/rejected-events/` | LeadHand (jobs they manage), Manager, Admin | Rejected punches (sync exceptions) |
+| GET | `staff/attendance/{id}/` | LeadHand (jobs they manage), Manager, Admin | Session with review history |
+| POST | `staff/attendance/{id}/review/` | Manager, Admin; **never your own timesheet** | Approve or reject a session |
+
+**A LeadHand manages a job** when they are its `lead_hand` **and** hold an
+active assignment on it (ADR 011). Managers and Admins work company-wide.
+Records outside the caller's scope return 404.
 
 ## Concepts
 
@@ -60,6 +64,7 @@ The same fields are used by every punch endpoint and by each sync event.
 | `location` | Optional. Omit it or send `null` when no fix is available. It is **never** validated strictly: bad values are discarded and flagged (see Location flags below). |
 | `employee_ids` | Group and sync events only: 1–100 unique employee ids. Individual endpoints **ignore** it, because the employee always comes from the token. |
 | `action_type` | Sync events only: `clock_in` or `clock_out`. |
+| `reason` | Group and sync events only. Optional, at most 500 characters, and stored as `entry_reason`. It is mainly for administrative entries. |
 
 A request is rejected with **400** only when it is structurally invalid:
 - a missing or malformed `event_id`
@@ -86,6 +91,7 @@ apart from `replayed`.
   "performed_by": {"id": 7, "email": "lee@example.com"},
   "captured_at": "2026-03-10T08:00:00-04:00",
   "received_at": "2026-03-10T08:00:02-04:00",
+  "entry_reason": "",
   "location": {
     "status": "verified",
     "flags": [],
@@ -145,25 +151,54 @@ apart from `replayed`.
              "details": {"result": {"event_id": "...", "results": [{"status": "rejected", "...": "..."}]}}}}
   ```
 
-## Group clock-in and clock-out (LeadHand)
+## Group clock-in and clock-out
 
 `POST timekeeping/group-clock-in/` and `POST timekeeping/group-clock-out/`,
 with an `employee_ids` list in the body.
 
-- The caller must have the LeadHand role (**403** `permission_denied`
-  otherwise). They must also be the job's LeadHand (`Job.lead_hand`), or the
-  response is **403** `not_job_lead_hand` and nothing is stored.
+**Who may call it.**
+- A **LeadHand**, for a job they manage. They must be the job's `lead_hand`
+  and hold an active assignment on it. Otherwise the response is **403**
+  `not_job_lead_hand` and nothing is stored.
+- An **Admin or Manager**, for any employee on any job.
+- **Employees** get **403** `permission_denied`. Through sync, they get
+  `group_attendance_not_allowed`.
+
+**How it works.**
 - Each employee is validated independently against their own active
   assignment and attendance state. One failure never affects the others.
-- Each accepted employee gets their own punch and session. The batch records
-  the LeadHand as `performed_by`. The location is the LeadHand's device fix,
-  assessed once for the whole batch.
-- To clock themselves in, a LeadHand includes their own employee id, or uses
-  the individual endpoint. Either way they need an active assignment to the
-  job; none is created automatically.
+- Each accepted employee gets their own punch and session, and the batch
+  records the caller as `performed_by`.
+- The location is the caller's device fix, assessed once for the whole
+  batch.
+- To clock themselves in, a caller includes their own employee id, or uses
+  the individual endpoint. They need an active assignment to the job either
+  way; none is created automatically.
 - **201** with one result per employee, including partial rejections.
-  Repeating the request with the same `event_id` returns the same body, with
-  `replayed: true`.
+  Repeating the request with the same `event_id` returns the same body,
+  with `replayed: true`.
+
+### Administrative entries (Admin and Manager)
+
+When an Admin or Manager records attendance for **anyone other than
+themselves**:
+
+- The batch's `source` is `admin_entry`. This applies online and through
+  sync, where it replaces `mobile_offline_sync`.
+- An optional `reason` is stored and returned as `entry_reason`.
+- The location is stored for reference, but **never flags the session**,
+  because the entry may be made from an office. `location.requires_review`
+  is `false`.
+- Each employee's active assignment is still required.
+- **The entry must be current.** If `captured_at` is more than 15 minutes
+  (`ATTENDANCE_ADMIN_ENTRY_MAX_AGE_SECONDS`) before the server receives it,
+  the response is **400** `admin_entry_not_current` and nothing is stored.
+  Through sync, that event's result is an `error` with the same code. Past
+  times will be handled by the future correction workflow.
+
+An Admin or Manager punching only themselves is a normal self punch:
+its source is `mobile_online` or `mobile_offline_sync`, and the normal
+location flags apply.
 
 ## Offline synchronisation
 
@@ -190,7 +225,7 @@ with an `employee_ids` list in the body.
 | --- | --- | --- |
 | `processed` | Stored. `batch` holds the event result, with per-employee `accepted` or `rejected` results. | Mark it synced. Show rejected employees to the user, because they won't succeed on retry. |
 | `invalid` | Structurally invalid; `error.details` has field errors. Nothing was stored. | Stop retrying; this is a bug or data problem. |
-| `error` | The event is not allowed (`not_job_lead_hand`, `leadhand_role_required`, `no_employee_profile`) or its `event_id` conflicts (`idempotency_key_conflict`). Nothing was stored. | Stop retrying. |
+| `error` | The event is not allowed (`not_job_lead_hand`, `group_attendance_not_allowed`, `attendance_not_allowed`, `no_employee_profile`, `admin_entry_not_current`) or its `event_id` conflicts (`idempotency_key_conflict`). Nothing was stored. | Stop retrying. |
 
 - An envelope that isn't an object with a non-empty `events` list of at most
   100 items gets a **400**.
@@ -281,8 +316,11 @@ The geofence is a circle around the job's coordinates, 100 m by default.
 - `exceptions/` lists sessions with `review_status = pending`.
 - `rejected-events/` lists rejected results with their event's device time,
   source, performer and code. Filters: `job_id`, `employee_id`.
-- `POST staff/attendance/{id}/review/` takes
+- `POST staff/attendance/{id}/review/` (Manager or Admin) takes
   `{"decision": "approved"|"rejected", "reason": "…"}`.
+  - **No one may review their own timesheet:** **403**
+    `cannot_review_own_timesheet`, for approving and for rejecting.
+    A Manager's or Admin's own attendance is reviewed by someone else.
   - `reason` is required and must not be blank.
   - Only **closed** sessions can be reviewed; an open one gets **409**
     `session_open`.
@@ -293,12 +331,13 @@ The geofence is a circle around the job's coordinates, 100 m by default.
   - Punches, batches, GPS data and exception flags are never changed.
   - **201** with the session and its full review history.
 
-### Permission assumption
+### Permissions
 
-Reviewer roles were not defined in detail, so access is kept narrow and is
-isolated in `apps/timekeeping/api/permissions.py`:
+Permissions are defined centrally (ADR 011, `apps/accounts/authorization.py`)
+and applied in `apps/timekeeping/api/permissions.py` and the scope selectors:
 
-- Only **Admins** can make review decisions.
-- **LeadHands** can view attendance, exceptions and rejected events, but only
-  for the jobs they lead.
-- Workers have no staff access.
+- **LeadHands** can view attendance, exceptions and rejected events only for
+  jobs they manage. They cannot review.
+- **Managers and Admins** have company-wide access and can review anyone's
+  timesheet except their own.
+- **Employees** have no staff access.

@@ -66,3 +66,17 @@ class ClockInView(APIView):
   (settings, error envelope, health) in `backend/tests/`.
 - Service functions get the most test coverage. View tests check wiring,
   permissions and status codes.
+
+## Authorization (ADR 011)
+
+- **Never compare role names** outside `apps/accounts/authorization.py`.
+  `tests/test_authorization_centralized.py` fails if you do.
+- In views, use `common.permissions.requires(Capability.X, ...)`.
+- In services, call `has_capability(user, Capability.X)`.
+- For which records a user may touch, use `apps/jobs/selectors/scope.py`
+  (`managed_jobs`, `crew_assignments`, `jobs_visible_to`,
+  `attendance_jobs_for`, `can_record_attendance_for_others`). Return 404 for
+  out-of-scope ids.
+- Create or manage accounts only through
+  `apps/accounts/services/accounts.py`. It decides which roles an actor may
+  assign and never sets staff or superuser flags.
