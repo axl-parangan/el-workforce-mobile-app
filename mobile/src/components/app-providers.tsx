@@ -6,6 +6,7 @@ import { queryClient } from '@/api/query-client';
 import { AuthProvider } from '@/features/auth/auth-provider';
 import { registerReactQueryNativeListeners } from '@/lib/react-query-native';
 import { DATABASE_NAME, initializeDatabase } from '@/offline/database/database';
+import { SyncProvider } from '@/offline/sync/sync-provider';
 
 export function AppProviders({ children }: { children: ReactNode }) {
   useEffect(() => registerReactQueryNativeListeners(), []);
@@ -13,7 +14,9 @@ export function AppProviders({ children }: { children: ReactNode }) {
   return (
     <QueryClientProvider client={queryClient}>
       <SQLiteProvider databaseName={DATABASE_NAME} onInit={initializeDatabase}>
-        <AuthProvider>{children}</AuthProvider>
+        <AuthProvider>
+          <SyncProvider>{children}</SyncProvider>
+        </AuthProvider>
       </SQLiteProvider>
     </QueryClientProvider>
   );

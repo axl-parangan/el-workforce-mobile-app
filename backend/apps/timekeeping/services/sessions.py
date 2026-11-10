@@ -73,25 +73,16 @@ def _clock_in(item: AttendanceBatchItem, *, exception_flags: tuple[str, ...]) ->
             f"Job {batch.job.job_number} is {batch.job.get_status_display().lower()}.",
         )
 
-    assignment = (
-        JobAssignment.objects.filter(
-            employee=employee, job=batch.job, status=AssignmentStatus.ACTIVE
-        )
-        .order_by("-assigned_at")
-        .first()
-    )
-    if assignment is None:
+    work_date = work_date_for(at)
+    assignment, problem = _assignment_in_effect(employee, batch.job, at=at, work_date=work_date)
+    item.assignment = assignment
+    if problem == ItemResultCode.NO_ACTIVE_ASSIGNMENT:
         return _reject(
             item,
             ItemResultCode.NO_ACTIVE_ASSIGNMENT,
             f"The employee has no active assignment to job {batch.job.job_number}.",
         )
-    item.assignment = assignment
-
-    work_date = work_date_for(at)
-    if (assignment.start_date and work_date < assignment.start_date) or (
-        assignment.end_date and work_date > assignment.end_date
-    ):
+    if problem == ItemResultCode.ASSIGNMENT_NOT_IN_EFFECT:
         return _reject(
             item,
             ItemResultCode.ASSIGNMENT_NOT_IN_EFFECT,
@@ -175,6 +166,50 @@ def _clock_out(item: AttendanceBatchItem, *, exception_flags: tuple[str, ...]) -
 
 
 # --- Helpers ------------------------------------------------------------------------
+
+
+def _assignment_in_effect(
+    employee, job, *, at: datetime, work_date
+) -> tuple[JobAssignment | None, str | None]:
+    """The assignment that authorises a clock-in captured at ``at``, or why none does.
+
+    - An ACTIVE assignment authorises punches whose work date is inside its dates.
+    - An ENDED assignment still authorises a punch captured before it was ended
+      and dated on or before its end date (Q6): an offline punch from while the
+      employee was assigned is accepted even if it syncs after the assignment
+      ended. ``updated_at`` marks the moment it ended, because services never
+      modify an assignment once it has ended. A live punch after ending is refused.
+    - CANCELLED assignments never authorise anything.
+    """
+    candidates = sorted(
+        JobAssignment.objects.filter(
+            employee=employee,
+            job=job,
+            status__in=(AssignmentStatus.ACTIVE, AssignmentStatus.ENDED),
+        ),
+        key=lambda a: (a.status != AssignmentStatus.ACTIVE, -a.assigned_at.timestamp()),
+    )
+
+    def in_dates(assignment: JobAssignment) -> bool:
+        return (assignment.start_date is None or assignment.start_date <= work_date) and (
+            assignment.end_date is None or work_date <= assignment.end_date
+        )
+
+    for assignment in candidates:
+        if assignment.status == AssignmentStatus.ACTIVE and in_dates(assignment):
+            return assignment, None
+        if (
+            assignment.status == AssignmentStatus.ENDED
+            and assignment.end_date is not None
+            and in_dates(assignment)
+            and at <= assignment.updated_at
+        ):
+            return assignment, None
+
+    active = next((a for a in candidates if a.status == AssignmentStatus.ACTIVE), None)
+    if active is not None:
+        return active, ItemResultCode.ASSIGNMENT_NOT_IN_EFFECT
+    return None, ItemResultCode.NO_ACTIVE_ASSIGNMENT
 
 
 def _open_session(employee, *, lock: bool = False) -> WorkSession | None:

@@ -55,3 +55,11 @@ export async function toApiError(response: Response): Promise<ApiError> {
   }
   return new ApiError(response.status, 'unknown_error', `Request failed (${response.status})`);
 }
+
+/** An app-level problem whose message is written for the user. */
+export class UserFacingError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'UserFacingError';
+  }
+}

@@ -23,12 +23,17 @@ export const currentUserSchema = z.object({
   first_name: z.string(),
   last_name: z.string(),
   role: roleSchema,
+  // Server-side capability names (decision M3). Older cached profiles lack
+  // them; an empty list simply hides actions until the profile refreshes.
+  capabilities: z.array(z.string()).catch([]),
+  employee: z.object({ id: z.number().int(), name: z.string() }).nullable().catch(null),
 });
 export type CurrentUser = z.infer<typeof currentUserSchema>;
 
 /** Login is email + password (ADR 007). */
 export const credentialsSchema = z.object({
-  email: z.email().transform((email) => email.trim().toLowerCase()),
+  // Normalise before validating: keyboards often append a space after autocomplete.
+  email: z.string().trim().toLowerCase().pipe(z.email()),
   password: z.string().min(1),
 });
 export type Credentials = z.input<typeof credentialsSchema>;

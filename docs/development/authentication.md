@@ -25,7 +25,23 @@
 | POST   | `token/`           | Exchange `{"email", "password"}` for access + refresh |
 | POST   | `token/refresh/`   | Rotate tokens                                   |
 | POST   | `token/blacklist/` | Log out (invalidate a refresh token)            |
-| GET    | `me/`              | Current user, including `role`                  |
+| GET    | `me/`              | Current user: `role`, `capabilities`, `employee` |
+
+### `me/` response
+
+```json
+{"id": 3, "email": "lee@example.com", "first_name": "", "last_name": "",
+ "role": "leadhand",
+ "capabilities": ["assignments.view_crew", "attendance.record_crew", "attendance.record_self", "…"],
+ "employee": {"id": 7, "name": "Lee Lead"}}
+```
+
+- `capabilities` is the sorted list from the central capability map
+  (`apps/accounts/authorization.py`, ADR 011). Clients use it to decide
+  which actions to offer (mobile decision M3); the server still enforces
+  every permission.
+- `employee` is the linked Employee record, or `null` when there is none
+  (such a user cannot record attendance).
 
 ## Roles
 

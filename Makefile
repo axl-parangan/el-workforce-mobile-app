@@ -4,7 +4,7 @@ MOBILE := cd mobile &&
 
 .DEFAULT_GOAL := help
 .PHONY: help env build up down logs ps shell bash dbshell migrate makemigrations \
-	createsuperuser test lint format check mobile-install mobile-start mobile-check
+	createsuperuser test lint format check mobile-install mobile-start mobile-check mobile-test
 
 help: ## Show available commands
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
@@ -72,3 +72,6 @@ mobile-start: ## Start the Expo dev server
 
 mobile-check: ## Typecheck, lint and format-check the mobile app
 	$(MOBILE) npm run typecheck && npm run lint && npm run format:check
+
+mobile-test: ## Run the mobile unit and screen tests (Jest)
+	$(MOBILE) npm test -- --ci

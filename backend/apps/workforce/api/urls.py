@@ -1,4 +1,9 @@
+from django.urls import path
+
+from .views import EmployeeListView
+
 app_name = "workforce"
 
-# TODO: add endpoints once the workforce models are designed.
-urlpatterns: list = []
+urlpatterns = [
+    path("employees/", EmployeeListView.as_view(), name="employee-list"),
+]

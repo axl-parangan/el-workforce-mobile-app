@@ -1,6 +1,6 @@
 # ADR 011: Roles and centralised authorization
 
-- Status: Accepted (role foundation implemented 2026-11-10)
+- Status: Accepted (role foundation implemented 2026-11-10; jobs capabilities split for the Jobs API)
 - Date: 2026-11-10
 - Supersedes: the role parts of ADR 006, ADR 007 and the timekeeping
   reviewer assumption
@@ -57,12 +57,16 @@ The map:
 | `attendance.record_crew` | | ✓ | | |
 | `attendance.view_crew` | | ✓ | | |
 | `jobs.lead` (may be a job's `lead_hand`) | | ✓ | | |
-| `jobs.create`, `jobs.edit` | | ✓ | ✓ | ✓ |
+| `jobs.create` | | ✓ | ✓ | ✓ |
+| `jobs.edit_managed` (jobs they manage; name, address, dates only) | | ✓ | | |
+| `assignments.view_crew` (assignments on jobs they manage) | | ✓ | | |
 | `attendance.record_any` | | | ✓ | ✓ |
 | `attendance.view_any` | | | ✓ | ✓ |
 | `attendance.review` | | | ✓ | ✓ |
+| `jobs.edit_any` (any job, all fields) | | | ✓ | ✓ |
 | `jobs.view_any` | | | ✓ | ✓ |
 | `assignments.manage` | | | ✓ | ✓ |
+| `employees.view_any` (employee list without pay, for pickers) | | | ✓ | ✓ |
 | `accounts.manage_staff` (LeadHand and Employee accounts) | | | ✓ | ✓ |
 | `accounts.manage_managers` | | | | ✓ |
 
@@ -91,6 +95,12 @@ something; scope says *which records*.
 - **Managers and Admins** act company-wide (decision D2).
 - **Employees** only see their own records.
 - **Out-of-scope records return 404**, so changing an id reveals nothing.
+- **Selectors for the jobs API** (added 2026-11-10):
+  - `jobs_editable_by`: any job for `jobs.edit_any`, or the jobs a LeadHand
+    manages
+  - `can_view_crew`
+  - `assignments_visible_to`: all; or a LeadHand's managed-job crew plus
+    their own; or an employee's own
 
 ### Attendance rules by role
 

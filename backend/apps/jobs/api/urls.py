@@ -1,4 +1,12 @@
+from django.urls import path
+
+from . import views
+
 app_name = "jobs"
 
-# TODO: add endpoints once the jobs models are designed.
-urlpatterns: list = []
+urlpatterns = [
+    path("", views.JobListCreateView.as_view(), name="list"),
+    path("<int:pk>/", views.JobDetailView.as_view(), name="detail"),
+    path("<int:pk>/lead-hand/", views.JobLeadHandView.as_view(), name="lead-hand"),
+    path("<int:pk>/assignments/", views.JobAssignmentsView.as_view(), name="assignments"),
+]

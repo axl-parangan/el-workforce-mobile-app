@@ -33,7 +33,8 @@ EXPECTED = {
         C.ATTENDANCE_VIEW_CREW,
         C.JOBS_LEAD,
         C.JOBS_CREATE,
-        C.JOBS_EDIT,
+        C.JOBS_EDIT_MANAGED,
+        C.ASSIGNMENTS_VIEW_CREW,
     },
     Role.MANAGER: {
         C.ATTENDANCE_RECORD_SELF,
@@ -44,9 +45,10 @@ EXPECTED = {
         C.ATTENDANCE_VIEW_ANY,
         C.ATTENDANCE_REVIEW,
         C.JOBS_CREATE,
-        C.JOBS_EDIT,
+        C.JOBS_EDIT_ANY,
         C.JOBS_VIEW_ANY,
         C.ASSIGNMENTS_MANAGE,
+        C.EMPLOYEES_VIEW_ANY,
         C.ACCOUNTS_MANAGE_STAFF,
     },
 }
@@ -70,6 +72,9 @@ def test_leadhand_is_not_a_junior_manager():
         C.ATTENDANCE_REVIEW,
         C.ASSIGNMENTS_MANAGE,
         C.ACCOUNTS_MANAGE_STAFF,
+        C.JOBS_EDIT_ANY,
+        C.JOBS_VIEW_ANY,
+        C.EMPLOYEES_VIEW_ANY,
     ):
         assert company_wide not in leadhand
 

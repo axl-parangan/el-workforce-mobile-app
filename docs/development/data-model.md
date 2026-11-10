@@ -155,7 +155,10 @@ removes its lines. Services block deleting approved runs.
 | `WorkSession` status values | `session_status` is open or closed. `review_status` is not_required, pending, approved or rejected. |
 | `PayrollRun.status` values | draft, approved, paid, cancelled |
 | Precision | Coordinates (9,6); accuracy and distance (10,2); `hourly_rate` and `hourly_rate_applied` (10,4); `hours_paid` (9,4); money (12,2); `GeofenceRadius` is a positive integer in metres, as in the ERD |
-| The LeadHand on their own job | To clock themselves in, the LeadHand needs an active `JobAssignment` on that job. **None is created automatically.** |
+| The LeadHand on their own job | To clock in or manage the job, the LeadHand needs an active `JobAssignment`. It is created automatically **only** when they create the job (Q1) or a Manager or Admin designates them (Q4). Clocking in never creates assignments. |
+| Assignment lifecycle | `active` → `ended` (keeps all history) or `active` → `cancelled` (only without work sessions, Q7). Rows are never reactivated or deleted; re-assigning creates a new row. Ending or cancelling the designated LeadHand's assignment clears `Job.lead_hand`. |
+| When an assignment ended | `JobAssignment.updated_at` of an `ended` row is used as the moment it ended. Services never modify an ended assignment. Dedicated `ended_at`/`ended_by` columns are deferred (Q11). |
+| Sessions per work date | Any number per employee, across jobs and on the same job. At most one open session per employee, enforced by the attendance service under the employee lock. |
 | "Jobs they manage" (group clock, crew, notes) | **Confirmed 2026-11-10:** `Job.lead_hand` is the LeadHand's employee record **and** the LeadHand holds an active assignment on the job (`apps/jobs/selectors/scope.py`) |
 
 ## Deferred, by decision

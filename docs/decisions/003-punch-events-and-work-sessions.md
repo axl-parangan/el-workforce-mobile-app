@@ -51,3 +51,20 @@ the assignment. The **actor** is the `User` who performed the batch.
 - Batches, items and punches are never edited. The design for corrections is
   deferred (see `docs/development/data-model.md`).
 - Payroll consumes closed (and, where required, approved) sessions.
+
+## Update (2026-11-10): moving between job sites
+
+- An employee may have several completed sessions on the same work date,
+  across different jobs, and more than one on the same job when they return.
+- They never have more than one **open** session. The attendance service
+  enforces this across all assignments, under a lock on the employee row
+  (`services/sessions.py`). The database only enforces one open session per
+  assignment; a database-level per-employee rule is deferred (Q15).
+- A clock-out always closes the open session against its original
+  assignment. Moving between jobs never modifies assignments.
+- An ended assignment still covers offline punches that were captured before
+  it was ended and are dated on or before its end date (Q6). Its
+  `updated_at` marks the moment it ended, until a dedicated column exists
+  (Q11, deferred).
+- Offline events with identical device times are processed with clock-outs
+  first (Q13).

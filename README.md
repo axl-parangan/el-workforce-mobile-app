@@ -19,8 +19,11 @@ GPS-verified punches, and offline-first timekeeping.
 >   with a central capability map, shared job and crew scope, guarded
 >   account provisioning, and a superuser-only Django admin (see
 >   [ADR 011](docs/decisions/011-roles-and-authorization.md))
+> - **jobs and assignments:** jobs, LeadHand designation, bulk assignment and
+>   the assignment lifecycle, integrated with timekeeping, including moving
+>   between job sites (see the [jobs API](docs/api/jobs.md))
 >
-> Jobs, payroll and team notes endpoints are next. See the
+> Payroll and team notes endpoints are next. See the
 > [open questions](docs/development/open-questions.md).
 
 ## Technology stack
@@ -178,7 +181,13 @@ make test ARGS="-k health"
 make lint                     # ruff check + ruff format --check
 make format
 make mobile-check             # tsc --noEmit, expo lint, prettier --check
+make mobile-test              # Jest: unit, screen and SQLite outbox tests
 ```
+
+Mobile tests that talk to a running backend are skipped unless
+`LIVE_API_URL` is set, e.g. `LIVE_API_URL=http://localhost:8000/api/v1 npx
+jest live` from `mobile/`. They use the demo accounts listed in
+`docs/development/mobile-qa-checklist.md`.
 
 CI (`.github/workflows/ci.yml`) runs the same checks on every push and pull
 request.

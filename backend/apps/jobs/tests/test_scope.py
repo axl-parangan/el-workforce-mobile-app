@@ -6,9 +6,12 @@ from apps.accounts.models import Role
 from apps.jobs.models import AssignmentStatus
 from apps.jobs.selectors.scope import (
     assigned_jobs,
+    assignments_visible_to,
     attendance_jobs_for,
     can_record_attendance_for_others,
+    can_view_crew,
     crew_assignments,
+    jobs_editable_by,
     jobs_visible_to,
     managed_jobs,
     manages_job,
@@ -95,3 +98,47 @@ def test_who_may_record_attendance_for_others(leadhand, make_employee, make_job,
     for role in (Role.ADMIN, Role.MANAGER):
         assert can_record_attendance_for_others(make_employee(role=role).user, unrelated)
     assert not can_record_attendance_for_others(make_employee(role=Role.WORKER).user, managed)
+
+
+def test_jobs_editable_by_role(leadhand, make_employee, make_job, make_assignment):
+    managed = make_job(lead_hand=leadhand)
+    make_assignment(employee=leadhand, job=managed)
+    crew_only = make_job()
+    make_assignment(employee=leadhand, job=crew_only)
+
+    assert list(jobs_editable_by(leadhand.user)) == [managed]
+    assert jobs_editable_by(make_employee(role=Role.MANAGER).user).count() == 2
+    assert not jobs_editable_by(make_employee(role=Role.WORKER).user).exists()
+
+
+def test_can_view_crew(leadhand, make_employee, make_job, make_assignment):
+    managed = make_job(lead_hand=leadhand)
+    make_assignment(employee=leadhand, job=managed)
+    other = make_job()
+    worker = make_employee(role=Role.WORKER)
+    make_assignment(employee=worker, job=managed)
+
+    assert can_view_crew(leadhand.user, managed)
+    assert not can_view_crew(leadhand.user, other)
+    assert not can_view_crew(worker.user, managed)  # employees never see the crew
+    assert can_view_crew(make_employee(role=Role.ADMIN).user, other)
+
+
+def test_assignments_visible_to(leadhand, make_employee, make_job, make_assignment):
+    managed = make_job(lead_hand=leadhand)
+    lead_row = make_assignment(employee=leadhand, job=managed)
+    worker = make_employee(role=Role.WORKER)
+    worker_row = make_assignment(employee=worker, job=managed)
+    ended_row = make_assignment(
+        employee=make_employee(), job=managed, status=AssignmentStatus.ENDED
+    )
+    elsewhere = make_assignment(employee=make_employee(), job=make_job())
+
+    assert set(assignments_visible_to(leadhand.user)) == {lead_row, worker_row, ended_row}
+    assert list(assignments_visible_to(worker.user)) == [worker_row]
+    assert set(assignments_visible_to(make_employee(role=Role.MANAGER).user)) == {
+        lead_row,
+        worker_row,
+        ended_row,
+        elsewhere,
+    }

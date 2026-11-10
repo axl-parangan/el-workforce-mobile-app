@@ -25,13 +25,28 @@ def test_obtain_token_pair_and_fetch_current_user(api_client, make_user):
     response = api_client.get(reverse("v1:accounts:me"))
 
     assert response.status_code == 200
-    assert response.json() == {
-        "id": response.json()["id"],
-        "email": "lead@example.com",
-        "first_name": "",
-        "last_name": "",
-        "role": "leadhand",
-    }
+    body = response.json()
+    assert body["email"] == "lead@example.com"
+    assert body["role"] == "leadhand"
+    assert body["first_name"] == ""
+    assert body["employee"] is None  # make_user creates no employee record
+    # Capabilities come from the central map (M3), sorted.
+    assert "attendance.record_crew" in body["capabilities"]
+    assert "attendance.review" not in body["capabilities"]
+    assert body["capabilities"] == sorted(body["capabilities"])
+
+
+def test_me_includes_employee_and_matches_the_capability_map(api_client, make_employee):
+    from apps.accounts.authorization import capabilities_for
+
+    employee = make_employee(role=Role.MANAGER, name="Max Manager")
+    api_client.force_authenticate(employee.user)
+
+    body = api_client.get(reverse("v1:accounts:me")).json()
+
+    assert body["employee"] == {"id": employee.pk, "name": "Max Manager"}
+    assert set(body["capabilities"]) == {c.value for c in capabilities_for(employee.user)}
+    assert "employees.view_any" in body["capabilities"]
 
 
 def test_login_email_is_case_insensitive(api_client, make_user):

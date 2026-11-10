@@ -1,6 +1,8 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { migration001PendingEvents } from './001-pending-events';
+import { migration002PendingEventOwner } from './002-pending-event-owner';
+import { migration003ReferenceCache } from './003-reference-cache';
 
 export type Migration = {
   /** Strictly increasing. Stored in `PRAGMA user_version`. */
@@ -12,7 +14,11 @@ export type Migration = {
 /**
  * Append-only list. Never edit a migration that has shipped; add a new one.
  */
-export const MIGRATIONS: readonly Migration[] = [migration001PendingEvents];
+export const MIGRATIONS: readonly Migration[] = [
+  migration001PendingEvents,
+  migration002PendingEventOwner,
+  migration003ReferenceCache,
+];
 
 export async function runMigrations(db: SQLiteDatabase): Promise<void> {
   const row = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');

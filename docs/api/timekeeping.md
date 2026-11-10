@@ -212,10 +212,12 @@ location flags apply.
 ]}
 ```
 
-- **Ordering.** Events are processed in **device-time order**
-  (`captured_at`, then submission order), whatever order they were queued or
-  received in. An 08:00 clock-in and a 12:00 clock-out uploaded together at
-  15:00 produce an 08:00–12:00 session.
+- **Ordering.** Events are processed in **device-time order**, whatever
+  order they were queued or received in. An 08:00 clock-in and a 12:00
+  clock-out uploaded together at 15:00 produce an 08:00–12:00 session.
+  - **Equal device times:** clock-outs are processed before clock-ins (Q13),
+    so a job switch recorded at one instant always works.
+  - **Then** submission order.
 - **Isolation.** Each event is processed in its own database transaction.
   An invalid or failing event never affects the others.
 - **Response.** Always **200** for a well-formed envelope. The results come
@@ -259,8 +261,42 @@ location flags apply.
 | A clock-out earlier than the open session's clock-in | Rejected `clock_out_before_clock_in`; the session stays open and is flagged `clock_out_rejected` |
 | A clock-out that would make the session overlap another session | Rejected `overlaps_existing_session`; the session stays open and is flagged `clock_out_rejected` |
 | A device time more than 5 minutes ahead of server time (`ATTENDANCE_FUTURE_TOLERANCE_SECONDS`) | Accepted; flagged `future_timestamp` |
+| A clock-in captured while the assignment was active, synced after a Manager ended it (Q6) | Accepted, if the punch is dated on or before the end date and was captured before the end was recorded |
+| A clock-in captured after the assignment was ended, or on a cancelled assignment | `no_active_assignment` |
 
 Rejected events stay visible to staff in `staff/attendance/rejected-events/`.
+
+## Moving between job sites
+
+An employee may work at several job sites in one workday. For example: clock
+in at A at 07:00, clock out of A and into B at 10:30, clock out of B at
+17:00, then return to A later.
+
+- **Only one open session per employee, ever,** across all jobs and
+  assignments. A clock-in while another session is open is refused with
+  `already_clocked_in`, naming the open job. The attendance service enforces
+  this under a lock on the employee row, which every punch path takes. The
+  database itself only guarantees one open session per assignment; a
+  database-level rule per employee is deferred (Q15).
+- **To move:**
+  1. Clock out of A. The session closes against A's original assignment. A
+     clock-out naming the wrong job is refused with
+     `open_session_on_other_job`.
+  2. Clock in at B. This needs an active assignment at B.
+
+  The same instant (A until 10:30, B from 10:30) is allowed, because
+  touching sessions don't overlap.
+- **Several completed sessions per work date are normal,** including two or
+  more on the same job and assignment when the employee returns. Each
+  session keeps its own punches, times and location assessment.
+- **Moving never ends, cancels or changes either assignment.**
+- **Group punches.** A LeadHand can only close sessions on jobs they manage.
+  The employee themselves, the LeadHand who manages the original job, or a
+  Manager or Admin closes the session there (Q14).
+- **Offline.** Queue the clock-out at A, then the clock-in at B. The upload
+  can be in any order, and equal times are handled by the ordering rule
+  above. Retries replay stored results and never create duplicate sessions
+  or punches.
 
 ## Location flags
 
@@ -305,8 +341,8 @@ The geofence is a circle around the job's coordinates, 100 m by default.
 ```
 
 - `GET timekeeping/jobs/{job_id}/crew/` lists employees with an active
-  assignment to the job: `has_account`, `clocked_in`, and the open session's
-  job and `clock_in_at`. It is for the LeadHand group-clock screen. A
+  assignment to the job: `has_account`, `assignment_id`, `clocked_in`, and
+  the open session's job and `clock_in_at`. It is for the LeadHand group-clock screen. A
   LeadHand who doesn't lead the job gets a 404.
 
 ## Staff attendance and review

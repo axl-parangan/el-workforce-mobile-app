@@ -37,15 +37,22 @@ class Capability(StrEnum):
     ATTENDANCE_VIEW_CREW = "attendance.view_crew"
     # May be set as Job.lead_hand.
     JOBS_LEAD = "jobs.lead"
+    # Edit the jobs they manage (limited fields: name, address, dates).
+    JOBS_EDIT_MANAGED = "jobs.edit_managed"
+    # See assignments (crew and history) on the jobs they manage.
+    ASSIGNMENTS_VIEW_CREW = "assignments.view_crew"
 
     # --- Company-wide operations --------------------------------------------------------
     ATTENDANCE_RECORD_ANY = "attendance.record_any"
     ATTENDANCE_VIEW_ANY = "attendance.view_any"
     ATTENDANCE_REVIEW = "attendance.review"
     JOBS_CREATE = "jobs.create"
-    JOBS_EDIT = "jobs.edit"
+    # Edit any job, all fields.
+    JOBS_EDIT_ANY = "jobs.edit_any"
     JOBS_VIEW_ANY = "jobs.view_any"
     ASSIGNMENTS_MANAGE = "assignments.manage"
+    # List employees (no pay data), e.g. to assign them or designate LeadHands.
+    EMPLOYEES_VIEW_ANY = "employees.view_any"
     # Create and manage LeadHand and Employee accounts.
     ACCOUNTS_MANAGE_STAFF = "accounts.manage_staff"
     # Create and manage Manager accounts.
@@ -67,7 +74,8 @@ _LEADHAND = _EMPLOYEE | {
     Capability.ATTENDANCE_VIEW_CREW,
     Capability.JOBS_LEAD,
     Capability.JOBS_CREATE,
-    Capability.JOBS_EDIT,
+    Capability.JOBS_EDIT_MANAGED,
+    Capability.ASSIGNMENTS_VIEW_CREW,
 }
 
 # Manager: company-wide operations. Still an employee who clocks in themselves.
@@ -76,9 +84,10 @@ _MANAGER = _EMPLOYEE | {
     Capability.ATTENDANCE_VIEW_ANY,
     Capability.ATTENDANCE_REVIEW,
     Capability.JOBS_CREATE,
-    Capability.JOBS_EDIT,
+    Capability.JOBS_EDIT_ANY,
     Capability.JOBS_VIEW_ANY,
     Capability.ASSIGNMENTS_MANAGE,
+    Capability.EMPLOYEES_VIEW_ANY,
     Capability.ACCOUNTS_MANAGE_STAFF,
 }
 

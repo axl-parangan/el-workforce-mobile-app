@@ -14,7 +14,7 @@ selectors only narrow access for crew-scoped users.
 
 from __future__ import annotations
 
-from django.db.models import QuerySet
+from django.db.models import Q, QuerySet
 
 from apps.accounts.authorization import Capability, has_capability
 from apps.accounts.models import User
@@ -55,6 +55,42 @@ def jobs_visible_to(user: User) -> QuerySet[Job]:
     if has_capability(user, Capability.JOBS_VIEW_ASSIGNED):
         return assigned_jobs(user)
     return Job.objects.none()
+
+
+def jobs_editable_by(user: User) -> QuerySet[Job]:
+    """Jobs a user may edit: any job, or only the jobs they manage as LeadHand.
+
+    Which *fields* may change is decided by apps/jobs/services/jobs.py.
+    """
+    if has_capability(user, Capability.JOBS_EDIT_ANY):
+        return Job.objects.all()
+    if has_capability(user, Capability.JOBS_EDIT_MANAGED):
+        return managed_jobs(user)
+    return Job.objects.none()
+
+
+def can_view_crew(user: User, job: Job) -> bool:
+    """May ``user`` list the assignments (crew and history) of ``job``?"""
+    if has_capability(user, Capability.ASSIGNMENTS_MANAGE):
+        return True
+    return has_capability(user, Capability.ASSIGNMENTS_VIEW_CREW) and manages_job(user, job)
+
+
+def assignments_visible_to(user: User) -> QuerySet[JobAssignment]:
+    """Assignments a user may see, in every status (history included).
+
+    - Managers and Admins: all.
+    - LeadHands: every assignment on the jobs they manage, plus their own.
+    - Employees: only their own (they never see other crew members).
+    """
+    if has_capability(user, Capability.ASSIGNMENTS_MANAGE):
+        return JobAssignment.objects.all()
+    if not has_capability(user, Capability.JOBS_VIEW_ASSIGNED):
+        return JobAssignment.objects.none()
+    own = Q(employee__user=user)
+    if has_capability(user, Capability.ASSIGNMENTS_VIEW_CREW):
+        return JobAssignment.objects.filter(own | Q(job__in=managed_jobs(user)))
+    return JobAssignment.objects.filter(own)
 
 
 def attendance_jobs_for(user: User) -> QuerySet[Job] | None:

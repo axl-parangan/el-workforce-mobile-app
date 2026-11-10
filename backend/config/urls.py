@@ -9,6 +9,7 @@ api_v1_patterns = [
     path("auth/", include("apps.accounts.api.urls")),
     path("workforce/", include("apps.workforce.api.urls")),
     path("jobs/", include("apps.jobs.api.urls")),
+    path("assignments/", include("apps.jobs.api.assignment_urls")),
     path("timekeeping/", include("apps.timekeeping.api.urls")),
     path("staff/attendance/", include("apps.timekeeping.api.staff_urls")),
     path("payroll/", include("apps.payroll.api.urls")),

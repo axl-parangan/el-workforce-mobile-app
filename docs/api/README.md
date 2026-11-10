@@ -61,14 +61,18 @@ will say so.
 | POST   | `/api/v1/auth/token/`        | No   | `{"email", "password"}` → token pair. Email is case-insensitive. |
 | POST   | `/api/v1/auth/token/refresh/`| No   | Rotate tokens               |
 | POST   | `/api/v1/auth/token/blacklist/` | No | Log out                    |
-| GET    | `/api/v1/auth/me/`           | Yes  | Current user and role       |
+| GET    | `/api/v1/auth/me/`           | Yes  | Current user, role, `capabilities` and linked `employee` |
 
 Domain endpoints:
 
 - **Timekeeping**: clock-in and clock-out, group punches, offline sync,
   status, history, crew, and staff review. See
   [timekeeping.md](timekeeping.md).
-- Jobs, payroll and team notes endpoints are not implemented yet.
+- **Jobs and assignments**: jobs, LeadHand designation, bulk assignment, and
+  the assignment lifecycle. See [jobs.md](jobs.md).
+- **Workforce**: the read-only employee list for Managers and Admins. See
+  [workforce.md](workforce.md).
+- Payroll and team notes endpoints are not implemented yet.
 
 A database constraint violation that reaches the API returns **409**
 `conflict` instead of a 500.

@@ -81,6 +81,60 @@ All confirmed as future work; nothing implemented yet.
 | Automatic mobile logout after 10 minutes of inactivity when not clocked in | Deferred |
 | Role-change workflow | None. Roles are fixed at account creation (D9); only superusers can change them, in the Django admin. |
 
+## Jobs and Assignments API decisions (approved 2026-11-10)
+
+| # | Decision |
+| --- | --- |
+| Q1 | A LeadHand creating a job becomes its LeadHand and gets an active assignment |
+| Q2 | Job numbers are entered by hand |
+| Q3 | LeadHands edit only name, address, start date and end date on jobs they manage |
+| Q4 | Designation auto-assigns; replacing keeps the previous LeadHand on the crew; ending the LeadHand's assignment clears the designation |
+| Q5 | An assignment can end while the employee is clocked in; clock-out still works |
+| Q6 | Offline punches captured before an assignment ended, and dated on or before its end date, are accepted |
+| Q7 | Cancel only without work sessions; otherwise end |
+| Q8 | Planned, active and on-hold jobs accept assignments; completing or cancelling a job doesn't end assignments |
+| Q9 | Employees see only their own assignment |
+| Q10 | Bulk assignment with per-employee results |
+| Q11 | **Deferred:** `ended_by` and `end_reason` columns, and the audit log |
+| Q12 | Capabilities `jobs.edit_any`, `jobs.edit_managed` and `assignments.view_crew` |
+| Q13 | Offline events with equal device times: clock-outs before clock-ins, then submission order |
+| Q14 | No cross-job LeadHand takeover of open sessions |
+| Q15 | **Deferred:** database-level one-open-session-per-employee rule; the service rule plus the lock is used instead |
+
+### Raised by the Jobs API (unresolved)
+
+| # | Question | Current behaviour |
+| --- | --- | --- |
+| J1 | **Offline clock-in on a job whose status changed before sync.** Q6 covers ended assignments, not job status. A punch captured while the job was active, but synced after it was put on hold or completed, is rejected `job_not_active`. | Rejected. It stays visible in rejected events for staff. |
+| J2 | **Superuser Django admin bypasses the services.** It can, for example, designate a LeadHand without an assignment. | Superuser-only; route it through the services if needed |
+
+## Mobile Jobs & Assignments integration decisions (approved 2026-11-10)
+
+| # | Decision |
+| --- | --- |
+| M1 | Real email and password sign-in form |
+| M2 | Role-prefixed paths inside the four role groups (`/worker`, `/leadhand`, `/manager`, `/admin`); each group contains only the screens that role may use |
+| M3 | `/auth/me/` returns `capabilities`; the app reads them to decide which actions to offer, and the server enforces them |
+| M4 | Read-only `GET workforce/employees/` for Managers and Admins (`employees.view_any`), with search, role and active filters, and no pay data |
+| M5 | Punches are written to the outbox first, then submitted online; if the server can't be reached they stay queued under the same `event_id`. New punches queue behind older unsent ones. |
+| M6 | Cached reference data older than 24 hours shows a warning; it never blocks clock-in |
+| M7 | Manager and Admin group punches are online-only; a retry reuses the same `event_id` |
+| M8 | If the clock-in at the new job is refused after the clock-out at the old one, the app shows the refusal and offers "Clock back in"; nothing is reversed automatically |
+| M9 | jest-expo and React Native Testing Library |
+| M10 | Signing out with unsent punches warns and asks for confirmation; punches are never deleted |
+| M11 | Company timezone `America/Toronto` for display and work dates |
+| M12 | Geofence entry with latitude and longitude fields and a "use my current location" button; no map library |
+| Ownership | Every outbox event stores the user id of the account that recorded it. Events sync only while that account is signed in, never with another account's token. Sign-out never deletes them. Events queued before ownership existed have no owner and are never synced automatically. |
+
+### Raised by the mobile integration (unresolved)
+
+| # | Question | Current behaviour |
+| --- | --- | --- |
+| MB1 | **Ownerless legacy events.** Events queued before local migration 002 have no owner. No released app version queued punches, so none should exist. | Kept and shown as waiting for another account; never synced or deleted. A manual recovery path could be added if one is ever found. |
+| MB2 | **Clock-back-in after a refused switch that was synced later.** M8's offer appears when the refusal arrives online. For a switch queued offline, the refusal appears later in History. | The employee clocks in again by hand from the Time screen. |
+| MB3 | **Crew status after an offline group punch.** The LeadHand's cached roster does not reflect queued group punches until they sync. | The result message says so; the roster refreshes after sync. |
+| MB4 | **Offline access to another account's cached data.** Cached reference data is cleared at sign-out, so a user who signs in must be online. | Sign-in always needs the server. |
+
 ## Resolved
 
 | Topic | Decision | Recorded in |
